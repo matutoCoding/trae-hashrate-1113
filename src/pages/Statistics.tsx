@@ -192,6 +192,25 @@ export const Statistics: React.FC = () => {
     : 0;
   const totalWarningUsed = stats.byVaccineType.reduce((sum, v) => sum + v.warningBatchUsed, 0);
 
+  const screeningDetail = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    if (selectedVaccineType) {
+      const filtered = appointments.filter(a => {
+        if (a.vaccineType !== selectedVaccineType) return false;
+        const aptDate = a.completedAt ? new Date(a.completedAt) : new Date(a.createdAt);
+        if (aptDate.getMonth() !== currentMonth || aptDate.getFullYear() !== currentYear) return false;
+        return a.status === 'screening_passed' || a.status === 'screening_failed' || a.status === 'completed';
+      });
+      const failed = filtered.filter(a => a.status === 'screening_failed').length;
+      return { failed, total: filtered.length, showDetail: true };
+    }
+
+    return { failed: 0, total: 0, showDetail: false };
+  }, [selectedVaccineType, appointments]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -227,14 +246,38 @@ export const Statistics: React.FC = () => {
           bgColor="bg-indigo-50"
           highlight
         />
-        <StatCard
-          title="平均筛查未通过率"
-          value={avgScreeningFailRate}
-          unit="%"
-          icon={XCircle}
-          color={avgScreeningFailRate > 10 ? 'text-red-600' : 'text-orange-600'}
-          bgColor={avgScreeningFailRate > 10 ? 'bg-red-50' : 'bg-orange-50'}
-        />
+        {screeningDetail.showDetail ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-500 font-medium">筛查未通过 / 总筛查</p>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className={`text-3xl font-bold ${screeningDetail.failed > 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                    {screeningDetail.failed}
+                  </span>
+                  <span className="text-gray-400">/</span>
+                  <span className="text-2xl font-semibold text-gray-600">{screeningDetail.total}</span>
+                  <span className="text-sm text-gray-500 ml-1">人</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  未通过率：{screeningDetail.total > 0 ? Math.round(screeningDetail.failed / screeningDetail.total * 100) : 0}%
+                </p>
+              </div>
+              <div className={`p-3 rounded-lg ${screeningDetail.failed > 0 ? 'bg-red-50' : 'bg-orange-50'}`}>
+                <XCircle className={`w-6 h-6 ${screeningDetail.failed > 0 ? 'text-red-600' : 'text-orange-600'}`} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <StatCard
+            title="平均筛查未通过率"
+            value={avgScreeningFailRate}
+            unit="%"
+            icon={XCircle}
+            color={avgScreeningFailRate > 10 ? 'text-red-600' : 'text-orange-600'}
+            bgColor={avgScreeningFailRate > 10 ? 'bg-red-50' : 'bg-orange-50'}
+          />
+        )}
         <StatCard
           title="临期批次消化"
           value={totalWarningUsed}

@@ -127,7 +127,7 @@ export const VaccineBatches: React.FC = () => {
 
   const handleExpiryDateBlur = () => {
     if (editingBatch && formData.expiryDate && formData.expiryDate !== editingBatch.expiryDate) {
-      updateBatch(editingBatch.id, { ...formData });
+      updateBatch(editingBatch.id, { expiryDate: formData.expiryDate });
       setAutoSaved(true);
       setTimeout(() => setAutoSaved(false), 2000);
     }

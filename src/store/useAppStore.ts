@@ -552,15 +552,13 @@ export const useAppStore = create<AppState>()(
             ? state.outboundRecords.find((o) => o.id === apt.outboundRecordId)
             : state.outboundRecords.find((o) => o.appointmentId === apt.id);
 
-          if (outboundRecord) {
-            results.push({
-              appointment: apt,
-              slot,
-              station,
-              batch,
-              outboundRecord
-            });
-          }
+          results.push({
+            appointment: apt,
+            slot,
+            station,
+            batch,
+            outboundRecord: outboundRecord!
+          });
         }
         
         if (params.batchNo) {
@@ -577,9 +575,11 @@ export const useAppStore = create<AppState>()(
           }
         }
         
-        return results.sort((a, b) =>
-          new Date(b.outboundRecord.outboundTime).getTime() - new Date(a.outboundRecord.outboundTime).getTime()
-        );
+        return results.sort((a, b) => {
+          const timeA = a.appointment?.createdAt ?? a.outboundRecord?.outboundTime ?? '';
+          const timeB = b.appointment?.createdAt ?? b.outboundRecord?.outboundTime ?? '';
+          return new Date(timeB).getTime() - new Date(timeA).getTime();
+        });
       },
       
       recallBatch: (data) => {
@@ -598,30 +598,29 @@ export const useAppStore = create<AppState>()(
         const affectedCount = affectedRecords.length;
         const lockedQuantity = batch.remainingQuantity;
         
+        const newRecord: RecallRecord = {
+          id: generateId(),
+          batchId: data.batchId,
+          batchNo: batch.batchNo,
+          vaccineName: batch.vaccineName,
+          reason: data.reason,
+          createdAt: new Date().toISOString(),
+          createdBy: state.currentUser?.name || '系统',
+          lockedQuantity,
+          affectedCount
+        };
+        
         set((state) => ({
           batches: state.batches.map((b) =>
             b.id === data.batchId ? { ...b, status: 'locked' as const } : b
           ),
-          recallRecords: [
-            {
-              id: generateId(),
-              batchId: data.batchId,
-              batchNo: batch.batchNo,
-              vaccineName: batch.vaccineName,
-              reason: data.reason,
-              createdAt: new Date().toISOString(),
-              createdBy: state.currentUser?.name || '系统',
-              lockedQuantity,
-              affectedCount
-            },
-            ...state.recallRecords
-          ]
+          recallRecords: [newRecord, ...state.recallRecords]
         }));
         
         return {
           success: true,
           message: `批次已锁定，受影响接种记录 ${affectedCount} 条`,
-          record: state.recallRecords[0]
+          record: newRecord
         };
       },
       

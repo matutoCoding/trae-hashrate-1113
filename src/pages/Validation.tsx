@@ -706,7 +706,7 @@ export const Validation: React.FC = () => {
         </div>
       )}
 
-      {showResultModal && selectedAppointment?.screeningResult && (
+      {showResultModal && selectedAppointment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -738,54 +738,60 @@ export const Validation: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-gray-500">筛查状态：</span>
-                    <span className={cn(
-                      'font-medium',
-                      selectedAppointment.status === 'screening_passed' ? 'text-green-600' : 'text-red-600'
-                    )}>
-                      {selectedAppointment.status === 'screening_passed' ? '筛查通过' : '筛查未通过'}
-                    </span>
+                    {selectedAppointment.screeningResult ? (
+                      <span className={cn(
+                        'font-medium',
+                        selectedAppointment.screeningResult.hasContraindication === false ? 'text-green-600' : 'text-red-600'
+                      )}>
+                        {selectedAppointment.screeningResult.hasContraindication === false ? '筛查通过' : '存在禁忌'}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-gray-600">未做过筛查</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {selectedAppointment.screeningResult.hasContraindication ? (
-                <ResultCard
-                  type="danger"
-                  title="存在接种禁忌"
-                  message="检测到明确的接种禁忌，不建议接种"
-                  suggestion="请咨询医生，待身体状况恢复后再进行接种"
-                />
-              ) : selectedAppointment.screeningResult.warnings.length > 0 && selectedAppointment.screeningResult.warnings[0] !== '未发现明显接种禁忌' ? (
-                <ResultCard
-                  type="warning"
-                  title="存在注意事项"
-                  message="检测到一些需要关注的健康情况"
-                  suggestion="建议经医生评估后决定是否接种"
-                />
-              ) : (
-                <ResultCard
-                  type="success"
-                  title="筛查通过"
-                  message="未发现明显接种禁忌"
-                  suggestion="可以正常接种，接种后请留观30分钟"
-                />
-              )}
+              {selectedAppointment.screeningResult ? (
+                <>
+                  {selectedAppointment.screeningResult.hasContraindication ? (
+                    <ResultCard
+                      type="danger"
+                      title="存在接种禁忌"
+                      message="检测到明确的接种禁忌，不建议接种"
+                      suggestion="请咨询医生，待身体状况恢复后再进行接种"
+                    />
+                  ) : (
+                    <ResultCard
+                      type="success"
+                      title="筛查通过"
+                      message="未发现明显接种禁忌"
+                      suggestion="可以正常接种，接种后请留观30分钟"
+                    />
+                  )}
 
-              <div className="space-y-2">
-                <h4 className="font-medium text-gray-700">详细评估：</h4>
-                {selectedAppointment.screeningResult.warnings.map((warning, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-3">
-                    <p className="text-gray-700 text-sm">
-                      <span className="font-medium text-blue-600">{index + 1}.</span> {warning}
-                    </p>
-                    {selectedAppointment.screeningResult?.suggestions[index] && (
-                      <p className="text-gray-600 text-sm mt-1 ml-5">
-                        → {selectedAppointment.screeningResult.suggestions[index]}
-                      </p>
-                    )}
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-gray-700">详细评估：</h4>
+                    {selectedAppointment.screeningResult.warnings.map((warning, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-gray-700 text-sm">
+                          <span className="font-medium text-blue-600">{index + 1}.</span> {warning}
+                        </p>
+                        {selectedAppointment.screeningResult?.suggestions[index] && (
+                          <p className="text-gray-600 text-sm mt-1 ml-5">
+                            → {selectedAppointment.screeningResult.suggestions[index]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>未做过筛查</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end p-6 border-t border-gray-200">
               <button

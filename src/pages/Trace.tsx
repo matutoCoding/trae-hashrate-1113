@@ -262,7 +262,7 @@ export const Trace: React.FC = () => {
             </div>
           ) : (
             results.map((record, index) => (
-              <TraceCard key={record.appointment?.id || record.outboundRecord.id} record={record} index={index} />
+              <TraceCard key={record.appointment?.id || record.outboundRecord?.id || index} record={record} index={index} />
             ))
           )}
         </div>
@@ -306,6 +306,7 @@ const TraceCard: React.FC<{ record: TraceRecord; index: number }> = ({ record, i
   const { appointment, slot, station, batch, outboundRecord } = record;
   const batchWarning = batch && calculateDaysRemaining(batch.expiryDate) <= 30;
   const isUnbound = !appointment;
+  const hasOutbound = !!outboundRecord;
 
   if (isUnbound) {
     return (
@@ -428,6 +429,159 @@ const TraceCard: React.FC<{ record: TraceRecord; index: number }> = ({ record, i
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasOutbound) {
+    const screeningPassed = appointment.screeningResult && !appointment.screeningResult.hasContraindication;
+
+    return (
+      <div className="bg-gray-50 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-gray-200 px-6 py-4 border-b border-gray-300 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-500 rounded-lg flex items-center justify-center text-white font-bold">
+              {index + 1}
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                {appointment.patientName}
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-300 text-gray-700">
+                  预约记录（未关联出库）
+                </span>
+              </h3>
+              <p className="text-sm text-gray-600 mt-0.5">
+                预约时间：{formatDateTime(appointment.createdAt)}
+              </p>
+            </div>
+          </div>
+          <AppointmentStatusBadge status={appointment.status} />
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <h4 className="font-medium text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-200">
+                <User className="w-4 h-4 text-gray-500" />
+                受种者信息
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <InfoItem icon={<User className="w-4 h-4" />} label="姓名" value={appointment.patientName} />
+                <InfoItem icon={<Syringe className="w-4 h-4" />} label="疫苗类型" value={appointment.vaccineType} highlight />
+                <InfoItem icon={<CreditCard className="w-4 h-4" />} label="身份证号" value={appointment.patientIdCard} />
+                <InfoItem icon={<Phone className="w-4 h-4" />} label="联系电话" value={appointment.phone} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className="font-medium text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-200">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                预约信息
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <InfoItem
+                  icon={<MapPin className="w-4 h-4" />}
+                  label="接种位"
+                  value={station?.name || '-'}
+                />
+                <InfoItem
+                  icon={<Clock className="w-4 h-4" />}
+                  label="接种时间"
+                  value={slot ? `${slot.date} ${slot.startTime}-${slot.endTime}` : '-'}
+                  highlight
+                />
+                <InfoItem
+                  icon={<CheckCircle className="w-4 h-4" />}
+                  label="当前状态"
+                  value={<AppointmentStatusBadge status={appointment.status} />}
+                />
+                {appointment.completedAt && (
+                  <InfoItem
+                    icon={<TrendingUp className="w-4 h-4" />}
+                    label="完成时间"
+                    value={formatDateTime(appointment.completedAt)}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {appointment.healthInfo && appointment.screeningResult && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h4 className="font-medium text-gray-700 flex items-center gap-2 pb-3">
+                <ShieldCheck className="w-4 h-4 text-teal-500" />
+                健康筛查结果
+                {appointment.screeningTime && (
+                  <span className="text-xs text-gray-400 font-normal ml-2">
+                    筛查时间：{formatDateTime(appointment.screeningTime)}
+                  </span>
+                )}
+                <span className="ml-auto">
+                  {screeningPassed ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      <CheckCircle className="w-3 h-3" /> 筛查通过
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                      <XCircle className="w-3 h-3" /> 存在禁忌
+                    </span>
+                  )}
+                </span>
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                <InfoItem
+                  icon={<span className="text-xs">🌡️</span>}
+                  label="体温"
+                  value={`${appointment.healthInfo.temperature}°C`}
+                  highlight={appointment.healthInfo.temperature > 37.5}
+                />
+                <InfoItem
+                  icon={<ShieldCheck className="w-4 h-4" />}
+                  label="过敏史"
+                  value={appointment.healthInfo.hasVaccineAllergy ? '有（疫苗）' : '无'}
+                  highlight={appointment.healthInfo.hasVaccineAllergy}
+                />
+                <InfoItem
+                  icon={<span className="text-xs">🤰</span>}
+                  label="妊娠期"
+                  value={appointment.healthInfo.isPregnant ? '是' : '否'}
+                  highlight={appointment.healthInfo.isPregnant}
+                />
+                <InfoItem
+                  icon={<Activity className="w-4 h-4" />}
+                  label="急性疾病"
+                  value={appointment.healthInfo.hasAcuteIllness ? '有' : '无'}
+                  highlight={appointment.healthInfo.hasAcuteIllness}
+                />
+                <InfoItem
+                  icon={<Heart className="w-4 h-4" />}
+                  label="慢性疾病"
+                  value={appointment.healthInfo.hasChronicDisease ? '有' : '无'}
+                  highlight={appointment.healthInfo.hasChronicDisease}
+                />
+                <InfoItem
+                  icon={<ShieldCheck className="w-4 h-4" />}
+                  label="免疫低下"
+                  value={appointment.healthInfo.isImmunocompromised ? '是' : '否'}
+                  highlight={appointment.healthInfo.isImmunocompromised}
+                />
+              </div>
+              {appointment.screeningResult.warnings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-600">评估结论：</p>
+                  {appointment.screeningResult.warnings.map((w, i) => (
+                    <div key={i} className="p-3 bg-gray-100 rounded-lg text-sm">
+                      <span className="font-medium text-purple-600">{i + 1}.</span> {w}
+                      {appointment.screeningResult?.suggestions[i] && (
+                        <p className="text-gray-600 mt-1 ml-5">→ {appointment.screeningResult.suggestions[i]}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

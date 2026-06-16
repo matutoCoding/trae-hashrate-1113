@@ -170,7 +170,7 @@ export const Recall: React.FC = () => {
           <ShieldAlert className="w-8 h-8 text-red-600" />
           疫苗召回管理
         </h1>
-        <p className="text-gray-500 mt-1">启动疫苗召回、锁定库存、追踪受种者通知状态</p>
+        <p className="text-gray-500 mt-1">启动疫苗召回、涉及库存、追踪受种者通知状态</p>
       </div>
 
       {successMessage && (
@@ -407,7 +407,7 @@ export const Recall: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">操作人</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">操作时间</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">影响人数</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">锁定库存</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">涉及库存</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
