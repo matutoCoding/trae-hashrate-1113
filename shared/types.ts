@@ -34,8 +34,15 @@ export interface Appointment {
   patientIdCard: string;
   phone: string;
   vaccineType: string;
-  status: 'booked' | 'completed' | 'cancelled';
+  status: 'booked' | 'screening_passed' | 'screening_failed' | 'completed' | 'cancelled';
   createdAt: string;
+  screeningResult?: ContraindicationResult;
+  screeningTime?: string;
+  healthInfo?: HealthInfo;
+  outboundRecordId?: string;
+  completedAt?: string;
+  batchId?: string;
+  batchNo?: string;
 }
 
 export interface OutboundRecord {
@@ -47,6 +54,9 @@ export interface OutboundRecord {
   operator: string;
   outboundTime: string;
   patientName?: string;
+  appointmentId?: string;
+  patientIdCard?: string;
+  phone?: string;
 }
 
 export interface ContraindicationResult {
@@ -72,6 +82,14 @@ export interface DashboardStats {
   todayCompleted: number;
   weeklyData: { date: string; count: number }[];
   recentOutbounds: OutboundRecord[];
+}
+
+export interface TraceRecord {
+  appointment: Appointment;
+  slot: TimeSlot | undefined;
+  station: VaccinationStation | undefined;
+  batch: VaccineBatch | undefined;
+  outboundRecord: OutboundRecord | undefined;
 }
 
 export type BatchStatus = VaccineBatch['status'];

@@ -7,7 +7,8 @@ import {
   CalendarDays,
   AlertTriangle,
   LogOut,
-  User
+  User,
+  Search
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
@@ -17,7 +18,8 @@ const navItems = [
   { path: '/vaccine-batches', label: '疫苗批次管理', icon: Syringe },
   { path: '/outbound', label: '效期出库管理', icon: PackageCheck },
   { path: '/schedule', label: '接种排期管理', icon: CalendarDays },
-  { path: '/validation', label: '冲突校验中心', icon: AlertTriangle }
+  { path: '/validation', label: '冲突校验中心', icon: AlertTriangle },
+  { path: '/trace', label: '接种追溯查询', icon: Search }
 ];
 
 export const Layout: React.FC = () => {

@@ -48,7 +48,8 @@ export const Outbound: React.FC = () => {
     getRecommendedBatches,
     getWarningBatchesList,
     performOutbound,
-    refreshBatchStatuses
+    refreshBatchStatuses,
+    checkFIFOValidation
   } = useAppStore();
 
   const [recommendedBatches, setRecommendedBatches] = useState<VaccineBatch[]>([]);
@@ -60,6 +61,7 @@ export const Outbound: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'outbound' | 'history'>('outbound');
+  const [fifoShouldUseBatch, setFifoShouldUseBatch] = useState<VaccineBatch | null>(null);
 
   useEffect(() => {
     refreshBatchStatuses();
@@ -70,6 +72,7 @@ export const Outbound: React.FC = () => {
   const handleOutbound = () => {
     if (!selectedBatch) {
       setErrorMessage('请先选择要出库的批次');
+      setFifoShouldUseBatch(null);
       return;
     }
 
@@ -83,6 +86,7 @@ export const Outbound: React.FC = () => {
     if (result.success) {
       setShowSuccess(true);
       setErrorMessage('');
+      setFifoShouldUseBatch(null);
       setSelectedBatch(null);
       setOutboundQuantity(1);
       setPatientName('');
@@ -92,6 +96,12 @@ export const Outbound: React.FC = () => {
       setTimeout(() => setShowSuccess(false), 3000);
     } else {
       setErrorMessage(result.message);
+      if (result.message.includes('请先使用批号')) {
+        const fifoResult = checkFIFOValidation(selectedBatch.id, selectedBatch.vaccineName);
+        setFifoShouldUseBatch(fifoResult.shouldUseBatch || null);
+      } else {
+        setFifoShouldUseBatch(null);
+      }
     }
   };
 
@@ -216,20 +226,37 @@ export const Outbound: React.FC = () => {
                 <div className="space-y-3">
                   {recommendedBatches.map((batch, index) => {
                     const daysRemaining = calculateDaysRemaining(batch.expiryDate);
+                    const isFirstBatch = index === 0;
                     return (
                       <div
                         key={batch.id}
                         onClick={() => {
                           if (batch.status !== 'locked' && batch.status !== 'expired') {
-                            setSelectedBatch(batch);
-                            setOutboundQuantity(Math.min(1, batch.remainingQuantity));
-                            setErrorMessage('');
+                            if (!isFirstBatch) {
+                              const fifoResult = checkFIFOValidation(batch.id, batch.vaccineName);
+                              if (!fifoResult.valid) {
+                                setErrorMessage(fifoResult.message);
+                                setFifoShouldUseBatch(fifoResult.shouldUseBatch || null);
+                              } else {
+                                setSelectedBatch(batch);
+                                setOutboundQuantity(Math.min(1, batch.remainingQuantity));
+                                setErrorMessage('');
+                                setFifoShouldUseBatch(null);
+                              }
+                            } else {
+                              setSelectedBatch(batch);
+                              setOutboundQuantity(Math.min(1, batch.remainingQuantity));
+                              setErrorMessage('');
+                              setFifoShouldUseBatch(null);
+                            }
                           }
                         }}
                         className={cn(
-                          'p-4 rounded-xl border-2 transition-all cursor-pointer',
+                          'p-4 rounded-xl border-2 transition-all cursor-pointer relative',
                           selectedBatch?.id === batch.id
                             ? 'border-[#165DFF] bg-[#165DFF]/5 shadow-md'
+                            : isFirstBatch
+                            ? 'border-red-400 bg-red-50/50 hover:border-red-500 shadow-sm shadow-red-100'
                             : batch.status === 'warning'
                             ? 'border-orange-200 bg-orange-50/50 hover:border-orange-300'
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
@@ -237,12 +264,18 @@ export const Outbound: React.FC = () => {
                             'opacity-50 cursor-not-allowed'
                         )}
                       >
+                        {isFirstBatch && (
+                          <div className="absolute -top-2 left-4 px-3 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full flex items-center gap-1 shadow-sm">
+                            <AlertTriangle className="w-3 h-3" />
+                            必须优先使用
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div
                               className={cn(
                                 'w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white',
-                                index === 0 ? 'bg-orange-500' : index === 1 ? 'bg-orange-400' : 'bg-gray-400'
+                                isFirstBatch ? 'bg-red-500' : index === 1 ? 'bg-orange-400' : 'bg-gray-400'
                               )}
                             >
                               {index + 1}
@@ -280,7 +313,13 @@ export const Outbound: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        {batch.status === 'warning' && (
+                        {isFirstBatch && (
+                          <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-2 text-red-600 text-sm font-medium">
+                            <AlertTriangle className="w-4 h-4" />
+                            该批次效期最早，按 FIFO 规则必须优先出库使用
+                          </div>
+                        )}
+                        {!isFirstBatch && batch.status === 'warning' && (
                           <div className="mt-3 pt-3 border-t border-orange-200 flex items-center gap-2 text-orange-600 text-sm">
                             <AlertTriangle className="w-4 h-4" />
                             该批次临期，请优先出库使用
@@ -306,9 +345,59 @@ export const Outbound: React.FC = () => {
               )}
 
               {errorMessage && (
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
-                  <XCircle className="w-5 h-5" />
-                  <span className="text-sm">{errorMessage}</span>
+                <div className={cn(
+                  'mb-4 p-4 rounded-xl border-2',
+                  errorMessage.includes('请先使用批号')
+                    ? 'bg-gradient-to-r from-red-50 to-orange-50 border-red-300 shadow-sm shadow-red-100'
+                    : 'bg-red-50 border-red-200'
+                )}>
+                  <div className={cn(
+                    'flex items-start gap-3',
+                    errorMessage.includes('请先使用批号') ? 'text-red-800' : 'text-red-700'
+                  )}>
+                    <AlertTriangle className={cn(
+                      'w-5 h-5 flex-shrink-0 mt-0.5',
+                      errorMessage.includes('请先使用批号') && 'animate-pulse'
+                    )} />
+                    <div className="flex-1">
+                      <p className={cn(
+                        'text-sm',
+                        errorMessage.includes('请先使用批号') && 'font-semibold'
+                      )}>
+                        {errorMessage}
+                      </p>
+                      {errorMessage.includes('请先使用批号') && fifoShouldUseBatch && (
+                        <div className="mt-3 p-3 bg-white rounded-lg border border-red-200">
+                          <p className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
+                            <ArrowRight className="w-3.5 h-3.5" />
+                            应优先使用的批次信息：
+                          </p>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-gray-500">批号：</span>
+                              <span className="font-mono font-medium text-gray-800">{fifoShouldUseBatch.batchNo}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">疫苗：</span>
+                              <span className="font-medium text-gray-800">{fifoShouldUseBatch.vaccineName}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">厂家：</span>
+                              <span className="text-gray-800">{fifoShouldUseBatch.manufacturer}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">库存：</span>
+                              <span className="font-medium text-[#165DFF]">{fifoShouldUseBatch.remainingQuantity} 剂</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">有效期至：</span>
+                              <span className="font-medium text-orange-600">{fifoShouldUseBatch.expiryDate}（{calculateDaysRemaining(fifoShouldUseBatch.expiryDate)}天后过期）</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 

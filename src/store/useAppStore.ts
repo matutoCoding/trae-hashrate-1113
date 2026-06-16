@@ -8,7 +8,8 @@ import type {
   OutboundRecord,
   HealthInfo,
   ContraindicationResult,
-  DashboardStats
+  DashboardStats,
+  TraceRecord
 } from '../../shared/types';
 import {
   initialBatches,
@@ -46,6 +47,7 @@ interface AppState {
   deleteBatch: (id: string) => void;
   lockBatch: (id: string) => void;
   refreshBatchStatuses: () => void;
+  checkFIFOValidation: (batchId: string, vaccineName: string) => { valid: boolean; message: string; shouldUseBatch?: VaccineBatch };
   
   addStation: (name: string) => void;
   updateStation: (id: string, updates: Partial<VaccinationStation>) => void;
@@ -62,7 +64,16 @@ interface AppState {
   }) => { success: boolean; message: string; appointment?: Appointment };
   
   cancelAppointment: (id: string) => void;
-  completeAppointment: (id: string) => void;
+  completeAppointmentWithVaccination: (data: {
+    appointmentId: string;
+    batchId: string;
+    operator: string;
+  }) => { success: boolean; message: string; record?: OutboundRecord };
+  
+  performScreeningForAppointment: (data: {
+    appointmentId: string;
+    healthInfo: HealthInfo;
+  }) => { success: boolean; message: string; result: ContraindicationResult };
   
   getRecommendedBatches: (vaccineName: string) => VaccineBatch[];
   getWarningBatchesList: (days?: number) => VaccineBatch[];
@@ -72,14 +83,25 @@ interface AppState {
     quantity: number;
     operator: string;
     patientName?: string;
+    appointmentId?: string;
+    patientIdCard?: string;
+    phone?: string;
   }) => { success: boolean; message: string; record?: OutboundRecord };
   
   checkConflict: (stationId: string, date: string, startTime: string, endTime: string) => {
     hasConflict: boolean;
     conflicts: TimeSlot[];
+    isValidTimeRange: boolean;
+    timeRangeMessage: string;
   };
   
   performScreening: (healthInfo: HealthInfo) => ContraindicationResult;
+  
+  traceRecords: (params: {
+    patientIdCard?: string;
+    phone?: string;
+    batchNo?: string;
+  }) => TraceRecord[];
   
   getDashboardStats: () => DashboardStats;
   
@@ -118,11 +140,19 @@ export const useAppStore = create<AppState>()(
       },
       
       updateBatch: (id, updates) => {
-        set((state) => ({
-          batches: state.batches.map((b) =>
-            b.id === id ? { ...b, ...updates } : b
-          )
-        }));
+        set((state) => {
+          const updatedBatches = state.batches.map((b) => {
+            if (b.id !== id) return b;
+            const merged = { ...b, ...updates };
+            if (updates.expiryDate !== undefined || updates.status !== undefined) {
+              if (merged.status !== 'locked') {
+                merged.status = calculateBatchStatus(merged.expiryDate);
+              }
+            }
+            return merged;
+          });
+          return { batches: updatedBatches };
+        });
       },
       
       deleteBatch: (id) => {
@@ -147,6 +177,37 @@ export const useAppStore = create<AppState>()(
             return { ...b, status: newStatus };
           })
         }));
+      },
+      
+      checkFIFOValidation: (batchId, vaccineName) => {
+        const state = get();
+        const targetBatch = state.batches.find(b => b.id === batchId);
+        if (!targetBatch) {
+          return { valid: false, message: '批次不存在' };
+        }
+        
+        const availableBatches = getFIFOBatches(state.batches, vaccineName);
+        
+        if (availableBatches.length === 0) {
+          return { valid: false, message: '该类型疫苗暂无可用库存' };
+        }
+        
+        const firstBatch = availableBatches[0];
+        
+        if (firstBatch.id === batchId) {
+          return { valid: true, message: '符合先进先出规则' };
+        }
+        
+        const targetIndex = availableBatches.findIndex(b => b.id === batchId);
+        if (targetIndex === -1) {
+          return { valid: false, message: '该批次不可出库（已过期或锁定）' };
+        }
+        
+        return {
+          valid: false,
+          message: `请先使用批号 ${firstBatch.batchNo}（有效期至 ${firstBatch.expiryDate}，剩余 ${firstBatch.remainingQuantity} 剂），该批次更早到期`,
+          shouldUseBatch: firstBatch
+        };
       },
       
       addStation: (name) => {
@@ -246,12 +307,119 @@ export const useAppStore = create<AppState>()(
         }));
       },
       
-      completeAppointment: (id) => {
+      completeAppointmentWithVaccination: (data) => {
+        const state = get();
+        const appointment = state.appointments.find((a) => a.id === data.appointmentId);
+        
+        if (!appointment) {
+          return { success: false, message: '预约记录不存在' };
+        }
+        
+        if (appointment.status === 'cancelled') {
+          return { success: false, message: '该预约已取消，无法完成接种' };
+        }
+        
+        if (appointment.status === 'completed') {
+          return { success: false, message: '该预约已完成接种' };
+        }
+        
+        if (appointment.status === 'booked') {
+          return { success: false, message: '请先完成健康筛查，筛查通过后再进行接种' };
+        }
+        
+        if (appointment.status === 'screening_failed') {
+          return { success: false, message: '健康筛查未通过，不建议接种' };
+        }
+        
+        const batch = state.batches.find((b) => b.id === data.batchId);
+        if (!batch) {
+          return { success: false, message: '批次不存在' };
+        }
+        
+        if (batch.status === 'locked' || batch.status === 'expired') {
+          return { success: false, message: '该批次已锁定或过期，无法出库' };
+        }
+        
+        if (batch.vaccineName !== appointment.vaccineType) {
+          return { success: false, message: `疫苗类型不匹配，请选择 ${appointment.vaccineType} 类型的批次` };
+        }
+        
+        if (1 > batch.remainingQuantity) {
+          return { success: false, message: '库存不足' };
+        }
+        
+        const fifoCheck = get().checkFIFOValidation(data.batchId, appointment.vaccineType);
+        if (!fifoCheck.valid) {
+          return { success: false, message: fifoCheck.message };
+        }
+        
+        const newRecord: OutboundRecord = {
+          id: generateId(),
+          batchId: data.batchId,
+          vaccineName: batch.vaccineName,
+          batchNo: batch.batchNo,
+          quantity: 1,
+          operator: data.operator,
+          outboundTime: new Date().toISOString(),
+          patientName: appointment.patientName,
+          appointmentId: appointment.id,
+          patientIdCard: appointment.patientIdCard,
+          phone: appointment.phone
+        };
+        
         set((state) => ({
+          outboundRecords: [newRecord, ...state.outboundRecords],
+          batches: state.batches.map((b) =>
+            b.id === data.batchId
+              ? { ...b, remainingQuantity: b.remainingQuantity - 1 }
+              : b
+          ),
           appointments: state.appointments.map((a) =>
-            a.id === id ? { ...a, status: 'completed' as const } : a
+            a.id === data.appointmentId
+              ? {
+                  ...a,
+                  status: 'completed' as const,
+                  completedAt: new Date().toISOString(),
+                  outboundRecordId: newRecord.id,
+                  batchId: batch.id,
+                  batchNo: batch.batchNo
+                }
+              : a
           )
         }));
+        
+        return { success: true, message: '接种完成，已自动扣减库存', record: newRecord };
+      },
+      
+      performScreeningForAppointment: (data) => {
+        const state = get();
+        const appointment = state.appointments.find((a) => a.id === data.appointmentId);
+        
+        if (!appointment) {
+          return { success: false, message: '预约记录不存在', result: { hasContraindication: true, warnings: ['预约不存在'], suggestions: ['请重新选择预约'] } };
+        }
+        
+        const result = screenContraindications(data.healthInfo);
+        
+        set((state) => ({
+          appointments: state.appointments.map((a) =>
+            a.id === data.appointmentId
+              ? {
+                  ...a,
+                  status: result.hasContraindication ? 'screening_failed' as const : 'screening_passed' as const,
+                  screeningResult: result,
+                  screeningTime: new Date().toISOString(),
+                  healthInfo: data.healthInfo
+                }
+              : a
+          )
+        }));
+        
+        return {
+          success: true,
+          message: result.hasContraindication ? '筛查未通过，存在接种禁忌' : '筛查通过，可以进行接种',
+          result
+        };
       },
       
       getRecommendedBatches: (vaccineName) => {
@@ -282,6 +450,11 @@ export const useAppStore = create<AppState>()(
           return { success: false, message: '出库数量必须大于0' };
         }
         
+        const fifoCheck = get().checkFIFOValidation(data.batchId, batch.vaccineName);
+        if (!fifoCheck.valid) {
+          return { success: false, message: fifoCheck.message };
+        }
+        
         const newRecord: OutboundRecord = {
           id: generateId(),
           batchId: data.batchId,
@@ -290,7 +463,10 @@ export const useAppStore = create<AppState>()(
           quantity: data.quantity,
           operator: data.operator,
           outboundTime: new Date().toISOString(),
-          patientName: data.patientName
+          patientName: data.patientName,
+          appointmentId: data.appointmentId,
+          patientIdCard: data.patientIdCard,
+          phone: data.phone
         };
         
         set((state) => ({
@@ -306,15 +482,72 @@ export const useAppStore = create<AppState>()(
       },
       
       checkConflict: (stationId, date, startTime, endTime) => {
+        if (startTime >= endTime) {
+          return {
+            hasConflict: false,
+            conflicts: [],
+            isValidTimeRange: false,
+            timeRangeMessage: '结束时间必须晚于开始时间'
+          };
+        }
+        
         const state = get();
         const slots = state.slots.filter(
           (s) => s.stationId === stationId && s.date === date
         );
-        return checkTimeConflict(slots, startTime, endTime);
+        const conflictResult = checkTimeConflict(slots, startTime, endTime);
+        
+        return {
+          ...conflictResult,
+          isValidTimeRange: true,
+          timeRangeMessage: '时间范围合法'
+        };
       },
       
       performScreening: (healthInfo) => {
         return screenContraindications(healthInfo);
+      },
+      
+      traceRecords: (params) => {
+        const state = get();
+        const results: TraceRecord[] = [];
+        
+        const filteredAppointments = state.appointments.filter((apt) => {
+          if (params.patientIdCard && !apt.patientIdCard.includes(params.patientIdCard)) return false;
+          if (params.phone && !apt.phone.includes(params.phone)) return false;
+          if (params.batchNo && apt.batchNo !== params.batchNo) return false;
+          return true;
+        });
+        
+        const filteredByOutbound = params.batchNo
+          ? state.appointments.filter((apt) => {
+              const outRecords = state.outboundRecords.filter((o) => o.batchNo === params.batchNo);
+              return outRecords.some((r) => r.appointmentId === apt.id);
+            })
+          : [];
+        
+        const allAppointments = [...new Map([...filteredAppointments, ...filteredByOutbound].map(a => [a.id, a])).values()];
+        
+        for (const apt of allAppointments) {
+          const slot = state.slots.find((s) => s.id === apt.slotId);
+          const station = state.stations.find((s) => s.id === slot?.stationId);
+          const batch = apt.batchId ? state.batches.find((b) => b.id === apt.batchId) : undefined;
+          const outboundRecord = apt.outboundRecordId
+            ? state.outboundRecords.find((o) => o.id === apt.outboundRecordId)
+            : state.outboundRecords.find((o) => o.appointmentId === apt.id);
+
+          results.push({
+            appointment: apt,
+            slot,
+            station,
+            batch,
+            outboundRecord
+          });
+        }
+        
+        return results.sort((a, b) =>
+          new Date(b.appointment.createdAt).getTime() - new Date(a.appointment.createdAt).getTime()
+        );
       },
       
       getDashboardStats: () => {
@@ -331,7 +564,7 @@ export const useAppStore = create<AppState>()(
         const todayAppointments = state.appointments.filter(
           (a) => {
             const slot = state.slots.find((s) => s.id === a.slotId);
-            return slot?.date === today && a.status === 'booked';
+            return slot?.date === today && (a.status === 'booked' || a.status === 'screening_passed');
           }
         ).length;
         
@@ -350,7 +583,7 @@ export const useAppStore = create<AppState>()(
           const count = state.appointments.filter(
             (a) => {
               const slot = state.slots.find((s) => s.id === a.slotId);
-              return slot?.date === dateStr && (a.status === 'booked' || a.status === 'completed');
+              return slot?.date === dateStr && a.status === 'completed';
             }
           ).length;
           weeklyData.push({ date: dateStr.slice(5), count });

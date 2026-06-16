@@ -104,6 +104,8 @@ export const Validation: React.FC = () => {
   const [conflictResult, setConflictResult] = useState<{
     hasConflict: boolean;
     conflicts: TimeSlot[];
+    isValidTimeRange: boolean;
+    timeRangeMessage: string;
   } | null>(null);
 
   const [healthInfo, setHealthInfo] = useState<HealthInfo>(initialHealthInfo);
@@ -256,6 +258,13 @@ export const Validation: React.FC = () => {
                 <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>请填写检测条件并点击检测按钮</p>
               </div>
+            ) : !conflictResult.isValidTimeRange ? (
+              <ResultCard
+                type="warning"
+                title="时间范围不合法"
+                message={conflictResult.timeRangeMessage}
+                suggestion="请重新选择合法的时间范围（结束时间必须晚于开始时间）"
+              />
             ) : conflictResult.hasConflict ? (
               <div className="space-y-4">
                 <ResultCard

@@ -6,6 +6,7 @@ import { VaccineBatches } from "@/pages/VaccineBatches";
 import { Outbound } from "@/pages/Outbound";
 import { Schedule } from "@/pages/Schedule";
 import { Validation } from "@/pages/Validation";
+import { Trace } from "@/pages/Trace";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="outbound" element={<Outbound />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="validation" element={<Validation />} />
+          <Route path="trace" element={<Trace />} />
         </Route>
       </Routes>
     </Router>

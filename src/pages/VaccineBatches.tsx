@@ -12,7 +12,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { calculateDaysRemaining } from '../utils/businessLogic';
+import { calculateDaysRemaining, calculateBatchStatus } from '../utils/businessLogic';
 import { vaccineTypes } from '../utils/mockData';
 import type { VaccineBatch, BatchStatus } from '../../shared/types';
 import { cn } from '../lib/utils';
@@ -135,9 +135,10 @@ export const VaccineBatches: React.FC = () => {
           <button
             onClick={refreshBatchStatuses}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+            title="状态已自动更新，点击可手动刷新"
           >
             <RefreshCw className="w-4 h-4" />
-            刷新状态
+            刷新状态（已自动更新）
           </button>
           <button
             onClick={() => {
@@ -274,7 +275,7 @@ export const VaccineBatches: React.FC = () => {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        {(batch.status === 'expired' || batch.status === 'warning') && (
+                        {batch.status === 'warning' && (
                           <button
                             onClick={() => setConfirmAction({ type: 'lock', batch })}
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -390,6 +391,39 @@ export const VaccineBatches: React.FC = () => {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#165DFF]"
                     required
                   />
+                  {editingBatch && formData.expiryDate && (
+                    <div className="mt-2">
+                      {(() => {
+                        const newStatus = calculateBatchStatus(formData.expiryDate);
+                        const originalStatus = editingBatch.status;
+                        const statusLabels: Record<BatchStatus, string> = {
+                          normal: '正常',
+                          warning: '临期',
+                          expired: '已过期',
+                          locked: '已锁定'
+                        };
+                        const statusStyles: Record<string, string> = {
+                          normal: 'text-green-600 bg-green-50',
+                          warning: 'text-orange-600 bg-orange-50',
+                          expired: 'text-red-600 bg-red-50',
+                          locked: 'text-gray-600 bg-gray-50'
+                        };
+                        if (newStatus !== originalStatus) {
+                          return (
+                            <div className={cn('text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1', statusStyles[newStatus])}>
+                              <AlertTriangle className="w-3 h-3" />
+                              修改后将变为：{statusLabels[newStatus]}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className={cn('text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1', statusStyles[newStatus])}>
+                            修改后状态：{statusLabels[newStatus]}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
