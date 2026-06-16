@@ -66,6 +66,7 @@ export const VaccineBatches: React.FC = () => {
   const [editingBatch, setEditingBatch] = useState<VaccineBatch | null>(null);
   const [formData, setFormData] = useState<BatchFormData>(initialFormData);
   const [confirmAction, setConfirmAction] = useState<{ type: string; batch: VaccineBatch } | null>(null);
+  const [autoSaved, setAutoSaved] = useState(false);
 
   useEffect(() => {
     refreshBatchStatuses();
@@ -121,6 +122,14 @@ export const VaccineBatches: React.FC = () => {
     if (confirmAction) {
       lockBatch(confirmAction.batch.id);
       setConfirmAction(null);
+    }
+  };
+
+  const handleExpiryDateBlur = () => {
+    if (editingBatch && formData.expiryDate && formData.expiryDate !== editingBatch.expiryDate) {
+      updateBatch(editingBatch.id, { ...formData });
+      setAutoSaved(true);
+      setTimeout(() => setAutoSaved(false), 2000);
     }
   };
 
@@ -388,40 +397,52 @@ export const VaccineBatches: React.FC = () => {
                     type="date"
                     value={formData.expiryDate}
                     onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                    onBlur={handleExpiryDateBlur}
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#165DFF]"
                     required
                   />
                   {editingBatch && formData.expiryDate && (
-                    <div className="mt-2">
-                      {(() => {
-                        const newStatus = calculateBatchStatus(formData.expiryDate);
-                        const originalStatus = editingBatch.status;
-                        const statusLabels: Record<BatchStatus, string> = {
-                          normal: '正常',
-                          warning: '临期',
-                          expired: '已过期',
-                          locked: '已锁定'
-                        };
-                        const statusStyles: Record<string, string> = {
-                          normal: 'text-green-600 bg-green-50',
-                          warning: 'text-orange-600 bg-orange-50',
-                          expired: 'text-red-600 bg-red-50',
-                          locked: 'text-gray-600 bg-gray-50'
-                        };
-                        if (newStatus !== originalStatus) {
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {(() => {
+                          const newStatus = calculateBatchStatus(formData.expiryDate);
+                          const originalStatus = editingBatch.status;
+                          const statusLabels: Record<BatchStatus, string> = {
+                            normal: '正常',
+                            warning: '临期',
+                            expired: '已过期',
+                            locked: '已锁定'
+                          };
+                          const statusStyles: Record<string, string> = {
+                            normal: 'text-green-600 bg-green-50',
+                            warning: 'text-orange-600 bg-orange-50',
+                            expired: 'text-red-600 bg-red-50',
+                            locked: 'text-gray-600 bg-gray-50'
+                          };
+                          if (newStatus !== originalStatus) {
+                            return (
+                              <div className={cn('text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1', statusStyles[newStatus])}>
+                                <AlertTriangle className="w-3 h-3" />
+                                修改后将变为：{statusLabels[newStatus]}
+                              </div>
+                            );
+                          }
                           return (
                             <div className={cn('text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1', statusStyles[newStatus])}>
-                              <AlertTriangle className="w-3 h-3" />
-                              修改后将变为：{statusLabels[newStatus]}
+                              修改后状态：{statusLabels[newStatus]}
                             </div>
                           );
-                        }
-                        return (
-                          <div className={cn('text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1', statusStyles[newStatus])}>
-                            修改后状态：{statusLabels[newStatus]}
+                        })()}
+                        {autoSaved && (
+                          <div className="text-xs px-2.5 py-1.5 rounded-md inline-flex items-center gap-1 text-green-600 bg-green-50">
+                            <Check className="w-3 h-3" />
+                            已实时更新
                           </div>
-                        );
-                      })()}
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        失焦自动保存，无需点保存按钮
+                      </div>
                     </div>
                   )}
                 </div>

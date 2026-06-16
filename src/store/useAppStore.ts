@@ -9,7 +9,9 @@ import type {
   HealthInfo,
   ContraindicationResult,
   DashboardStats,
-  TraceRecord
+  TraceRecord,
+  RecallRecord,
+  VaccinationStats
 } from '../../shared/types';
 import {
   initialBatches,
@@ -21,6 +23,7 @@ import {
 } from '../utils/mockData';
 import {
   calculateBatchStatus,
+  calculateDaysRemaining,
   getFIFOBatches,
   getWarningBatches,
   checkTimeConflict,
@@ -36,6 +39,7 @@ interface AppState {
   slots: TimeSlot[];
   appointments: Appointment[];
   outboundRecords: OutboundRecord[];
+  recallRecords: RecallRecord[];
   
   currentUser: { name: string; role: string } | null;
   selectedDate: string;
@@ -103,6 +107,17 @@ interface AppState {
     batchNo?: string;
   }) => TraceRecord[];
   
+  recallBatch: (data: {
+    batchId: string;
+    reason: string;
+  }) => { success: boolean; message: string; record?: RecallRecord };
+  
+  getRecalledPatients: (batchNo: string) => Appointment[];
+  
+  markAsNotified: (appointmentIds: string[], batchNo: string) => void;
+  
+  getVaccinationStats: (filter?: { vaccineType?: string }) => VaccinationStats;
+  
   getDashboardStats: () => DashboardStats;
   
   setSelectedDate: (date: string) => void;
@@ -122,6 +137,7 @@ export const useAppStore = create<AppState>()(
       slots: initialSlots,
       appointments: initialAppointments,
       outboundRecords: initialOutboundRecords,
+      recallRecords: [],
       
       currentUser: null,
       selectedDate: formatDate(new Date()),
@@ -536,18 +552,170 @@ export const useAppStore = create<AppState>()(
             ? state.outboundRecords.find((o) => o.id === apt.outboundRecordId)
             : state.outboundRecords.find((o) => o.appointmentId === apt.id);
 
-          results.push({
-            appointment: apt,
-            slot,
-            station,
-            batch,
-            outboundRecord
-          });
+          if (outboundRecord) {
+            results.push({
+              appointment: apt,
+              slot,
+              station,
+              batch,
+              outboundRecord
+            });
+          }
+        }
+        
+        if (params.batchNo) {
+          const standaloneOutbounds = state.outboundRecords.filter((o) =>
+            o.batchNo === params.batchNo && !o.appointmentId
+          );
+          
+          for (const outRec of standaloneOutbounds) {
+            const batch = state.batches.find((b) => b.id === outRec.batchId);
+            results.push({
+              outboundRecord: outRec,
+              batch
+            });
+          }
         }
         
         return results.sort((a, b) =>
-          new Date(b.appointment.createdAt).getTime() - new Date(a.appointment.createdAt).getTime()
+          new Date(b.outboundRecord.outboundTime).getTime() - new Date(a.outboundRecord.outboundTime).getTime()
         );
+      },
+      
+      recallBatch: (data) => {
+        const state = get();
+        const batch = state.batches.find((b) => b.id === data.batchId);
+        
+        if (!batch) {
+          return { success: false, message: '批次不存在' };
+        }
+        
+        if (batch.status === 'locked') {
+          return { success: false, message: '该批次已锁定' };
+        }
+        
+        const affectedRecords = state.outboundRecords.filter((o) => o.batchNo === batch.batchNo);
+        const affectedCount = affectedRecords.length;
+        const lockedQuantity = batch.remainingQuantity;
+        
+        set((state) => ({
+          batches: state.batches.map((b) =>
+            b.id === data.batchId ? { ...b, status: 'locked' as const } : b
+          ),
+          recallRecords: [
+            {
+              id: generateId(),
+              batchId: data.batchId,
+              batchNo: batch.batchNo,
+              vaccineName: batch.vaccineName,
+              reason: data.reason,
+              createdAt: new Date().toISOString(),
+              createdBy: state.currentUser?.name || '系统',
+              lockedQuantity,
+              affectedCount
+            },
+            ...state.recallRecords
+          ]
+        }));
+        
+        return {
+          success: true,
+          message: `批次已锁定，受影响接种记录 ${affectedCount} 条`,
+          record: state.recallRecords[0]
+        };
+      },
+      
+      getRecalledPatients: (batchNo) => {
+        const state = get();
+        return state.appointments.filter((a) => a.batchNo === batchNo && a.status === 'completed');
+      },
+      
+      markAsNotified: (appointmentIds, batchNo) => {
+        set((state) => ({
+          appointments: state.appointments.map((a) =>
+            appointmentIds.includes(a.id) ? { ...a, notified: true } : a
+          )
+        }));
+      },
+      
+      getVaccinationStats: (filter) => {
+        const state = get();
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        const vaccineTypeMap = new Map<string, {
+          completed: number;
+          screeningFailed: number;
+          totalScreening: number;
+          warningBatchUsed: number;
+        }>();
+        
+        const stationMap = new Map<string, number>();
+        
+        for (const apt of state.appointments) {
+          const aptDate = apt.completedAt ? new Date(apt.completedAt) : new Date(apt.createdAt);
+          if (aptDate.getMonth() !== currentMonth || aptDate.getFullYear() !== currentYear) continue;
+          
+          if (filter?.vaccineType && apt.vaccineType !== filter.vaccineType) continue;
+          
+          const stats = vaccineTypeMap.get(apt.vaccineType) || {
+            completed: 0,
+            screeningFailed: 0,
+            totalScreening: 0,
+            warningBatchUsed: 0
+          };
+          
+          if (apt.status === 'completed') {
+            stats.completed++;
+            
+            if (apt.batchId) {
+              const batch = state.batches.find((b) => b.id === apt.batchId);
+              if (batch && calculateDaysRemaining(batch.expiryDate) <= 30) {
+                stats.warningBatchUsed++;
+              }
+            }
+          }
+          
+          if (apt.status === 'screening_passed' || apt.status === 'screening_failed' || apt.status === 'completed') {
+            stats.totalScreening++;
+            if (apt.status === 'screening_failed') {
+              stats.screeningFailed++;
+            }
+          }
+          
+          vaccineTypeMap.set(apt.vaccineType, stats);
+          
+          if (apt.status === 'completed') {
+            const slot = state.slots.find((s) => s.id === apt.slotId);
+            if (slot) {
+              stationMap.set(slot.stationId, (stationMap.get(slot.stationId) || 0) + 1);
+            }
+          }
+        }
+        
+        const byVaccineType = Array.from(vaccineTypeMap.entries()).map(([vaccineName, stats]) => ({
+          vaccineName,
+          monthlyCompleted: stats.completed,
+          screeningFailedRate: stats.totalScreening > 0 ? Math.round((stats.screeningFailed / stats.totalScreening) * 100) : 0,
+          warningBatchUsed: stats.warningBatchUsed
+        }));
+        
+        const topStations = Array.from(stationMap.entries())
+          .map(([stationId, completedCount]) => {
+            const station = state.stations.find((s) => s.id === stationId);
+            return {
+              stationId,
+              stationName: station?.name || '未知',
+              completedCount
+            };
+          })
+          .sort((a, b) => b.completedCount - a.completedCount);
+        
+        return {
+          byVaccineType,
+          topStations
+        };
       },
       
       getDashboardStats: () => {
@@ -641,6 +809,7 @@ export const useAppStore = create<AppState>()(
         slots: state.slots,
         appointments: state.appointments,
         outboundRecords: state.outboundRecords,
+        recallRecords: state.recallRecords,
         currentUser: state.currentUser
       })
     }

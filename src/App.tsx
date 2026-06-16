@@ -7,6 +7,8 @@ import { Outbound } from "@/pages/Outbound";
 import { Schedule } from "@/pages/Schedule";
 import { Validation } from "@/pages/Validation";
 import { Trace } from "@/pages/Trace";
+import { Recall } from "@/pages/Recall";
+import { Statistics } from "@/pages/Statistics";
 
 export default function App() {
   return (
@@ -20,6 +22,8 @@ export default function App() {
           <Route path="schedule" element={<Schedule />} />
           <Route path="validation" element={<Validation />} />
           <Route path="trace" element={<Trace />} />
+          <Route path="recall" element={<Recall />} />
+          <Route path="statistics" element={<Statistics />} />
         </Route>
       </Routes>
     </Router>

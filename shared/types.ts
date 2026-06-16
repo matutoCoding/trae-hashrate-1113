@@ -43,6 +43,7 @@ export interface Appointment {
   completedAt?: string;
   batchId?: string;
   batchNo?: string;
+  notified?: boolean;
 }
 
 export interface OutboundRecord {
@@ -85,11 +86,39 @@ export interface DashboardStats {
 }
 
 export interface TraceRecord {
-  appointment: Appointment;
-  slot: TimeSlot | undefined;
-  station: VaccinationStation | undefined;
-  batch: VaccineBatch | undefined;
-  outboundRecord: OutboundRecord | undefined;
+  appointment?: Appointment;
+  slot?: TimeSlot | undefined;
+  station?: VaccinationStation | undefined;
+  batch?: VaccineBatch | undefined;
+  outboundRecord: OutboundRecord;
+}
+
+export interface RecallRecord {
+  id: string;
+  batchId: string;
+  batchNo: string;
+  vaccineName: string;
+  reason: string;
+  createdAt: string;
+  createdBy: string;
+  lockedQuantity: number;
+  affectedCount: number;
+}
+
+export interface VaccinationStats {
+  byVaccineType: {
+    vaccineName: string;
+    monthlyCompleted: number;
+    screeningFailedRate: number;
+    warningBatchUsed: number;
+  }[];
+  topStations: {
+    stationId: string;
+    stationName: string;
+    completedCount: number;
+  }[];
+  monthlyDetail?: Appointment[];
+  screeningDetail?: Appointment[];
 }
 
 export type BatchStatus = VaccineBatch['status'];

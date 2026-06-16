@@ -15,7 +15,10 @@ import {
   RefreshCw,
   Search,
   AlertCircle,
-  CheckSquare
+  CheckSquare,
+  Eye,
+  Check,
+  X
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { checkTimeConflict, formatDate, formatDateTime } from '../utils/businessLogic';
@@ -92,7 +95,8 @@ export const Validation: React.FC = () => {
     slots,
     appointments,
     checkConflict,
-    performScreening
+    performScreening,
+    performScreeningForAppointment
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'conflict' | 'release' | 'screening'>('conflict');
@@ -110,6 +114,9 @@ export const Validation: React.FC = () => {
 
   const [healthInfo, setHealthInfo] = useState<HealthInfo>(initialHealthInfo);
   const [screeningResult, setScreeningResult] = useState<ReturnType<typeof performScreening> | null>(null);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
+  const [showResultModal, setShowResultModal] = useState(false);
 
   const cancelledAppointments = useMemo(() => {
     return appointments
@@ -123,19 +130,67 @@ export const Validation: React.FC = () => {
     return slots.filter(s => cancelledSlotIds.includes(s.id) && s.status === 'available');
   }, [slots, cancelledAppointments]);
 
+  const screenableAppointments = useMemo(() => {
+    return appointments
+      .filter(a => a.status === 'booked' || a.status === 'screening_passed')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [appointments]);
+
+  const selectedAppointment = useMemo(() => {
+    return appointments.find(a => a.id === selectedAppointmentId) || null;
+  }, [appointments, selectedAppointmentId]);
+
+  const statusText: Record<string, string> = {
+    booked: '待筛查',
+    screening_passed: '筛查通过'
+  };
+
   const handleConflictCheck = () => {
     const result = checkConflict(conflictStationId, conflictDate, conflictStartTime, conflictEndTime);
     setConflictResult(result);
   };
 
+  const handleAppointmentChange = (appointmentId: string) => {
+    setSelectedAppointmentId(appointmentId);
+    setScreeningResult(null);
+    setSuccessMessage('');
+
+    if (appointmentId) {
+      const appointment = appointments.find(a => a.id === appointmentId);
+      if (appointment?.healthInfo) {
+        setHealthInfo(appointment.healthInfo);
+      } else {
+        setHealthInfo(initialHealthInfo);
+      }
+      if (appointment?.screeningResult) {
+        setScreeningResult(appointment.screeningResult);
+      }
+    } else {
+      setHealthInfo(initialHealthInfo);
+    }
+  };
+
   const handleScreening = () => {
-    const result = performScreening(healthInfo);
-    setScreeningResult(result);
+    if (selectedAppointmentId) {
+      const result = performScreeningForAppointment({
+        appointmentId: selectedAppointmentId,
+        healthInfo
+      });
+      setScreeningResult(result.result);
+      setSuccessMessage('筛查完成！筛查结果已保存到预约记录，接种排期页面可见');
+    } else {
+      const result = performScreening(healthInfo);
+      setScreeningResult(result);
+      setSuccessMessage('筛查完成！');
+    }
+    setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const resetScreening = () => {
+    setSelectedAppointmentId('');
     setHealthInfo(initialHealthInfo);
     setScreeningResult(null);
+    setSuccessMessage('');
   };
 
   const timeOptions = useMemo(() => {
@@ -426,7 +481,54 @@ export const Validation: React.FC = () => {
                 重置
               </button>
             </div>
+            {successMessage && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700 mb-4">
+                <Check className="w-5 h-5 flex-shrink-0" />
+                <span className="text-sm">{successMessage}</span>
+              </div>
+            )}
+
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-blue-500" />
+                  选择预约（可选）
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedAppointmentId}
+                    onChange={(e) => handleAppointmentChange(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">-- 不选择预约，仅做筛查演示 --</option>
+                    {screenableAppointments.map(apt => (
+                      <option key={apt.id} value={apt.id}>
+                        {apt.patientName} - {apt.patientIdCard.slice(-6)} - {apt.vaccineType} - {statusText[apt.status]}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedAppointment?.screeningResult && (
+                    <button
+                      onClick={() => setShowResultModal(true)}
+                      className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"
+                      title="查看筛查结果"
+                    >
+                      <Eye className="w-4 h-4" />
+                      查看结果
+                    </button>
+                  )}
+                </div>
+                {selectedAppointment?.screeningResult && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-amber-700">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm">该预约已做过筛查，可重新筛查覆盖</span>
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-1">选择预约后筛查结果将保存到预约记录中</p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
                   <Thermometer className="w-4 h-4 text-red-500" />
@@ -600,6 +702,99 @@ export const Validation: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showResultModal && selectedAppointment?.screeningResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-blue-600" />
+                历史筛查结果
+              </h3>
+              <button
+                onClick={() => setShowResultModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-500">受种者：</span>
+                    <span className="font-medium text-gray-800">{selectedAppointment.patientName}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">疫苗类型：</span>
+                    <span className="font-medium text-gray-800">{selectedAppointment.vaccineType}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">筛查时间：</span>
+                    <span className="font-medium text-gray-800">{selectedAppointment.screeningTime ? formatDateTime(selectedAppointment.screeningTime) : '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">筛查状态：</span>
+                    <span className={cn(
+                      'font-medium',
+                      selectedAppointment.status === 'screening_passed' ? 'text-green-600' : 'text-red-600'
+                    )}>
+                      {selectedAppointment.status === 'screening_passed' ? '筛查通过' : '筛查未通过'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedAppointment.screeningResult.hasContraindication ? (
+                <ResultCard
+                  type="danger"
+                  title="存在接种禁忌"
+                  message="检测到明确的接种禁忌，不建议接种"
+                  suggestion="请咨询医生，待身体状况恢复后再进行接种"
+                />
+              ) : selectedAppointment.screeningResult.warnings.length > 0 && selectedAppointment.screeningResult.warnings[0] !== '未发现明显接种禁忌' ? (
+                <ResultCard
+                  type="warning"
+                  title="存在注意事项"
+                  message="检测到一些需要关注的健康情况"
+                  suggestion="建议经医生评估后决定是否接种"
+                />
+              ) : (
+                <ResultCard
+                  type="success"
+                  title="筛查通过"
+                  message="未发现明显接种禁忌"
+                  suggestion="可以正常接种，接种后请留观30分钟"
+                />
+              )}
+
+              <div className="space-y-2">
+                <h4 className="font-medium text-gray-700">详细评估：</h4>
+                {selectedAppointment.screeningResult.warnings.map((warning, index) => (
+                  <div key={index} className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-gray-700 text-sm">
+                      <span className="font-medium text-blue-600">{index + 1}.</span> {warning}
+                    </p>
+                    {selectedAppointment.screeningResult?.suggestions[index] && (
+                      <p className="text-gray-600 text-sm mt-1 ml-5">
+                        → {selectedAppointment.screeningResult.suggestions[index]}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end p-6 border-t border-gray-200">
+              <button
+                onClick={() => setShowResultModal(false)}
+                className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -103,13 +103,17 @@ export const Trace: React.FC = () => {
 
   const stats = useMemo(() => {
     if (!hasSearched) return null;
+    const boundRecords = results.filter(r => r.appointment);
+    const unboundRecords = results.filter(r => !r.appointment);
     return {
       total: results.length,
-      completed: results.filter(r => r.appointment.status === 'completed').length,
+      completed: boundRecords.filter(r => r.appointment!.status === 'completed').length,
       hasWarning: results.some(r =>
-        r.appointment.status === 'screening_failed' ||
+        (r.appointment && r.appointment.status === 'screening_failed') ||
         (r.batch && calculateDaysRemaining(r.batch.expiryDate) <= 30)
-      )
+      ),
+      boundCount: boundRecords.length,
+      unboundCount: unboundRecords.length
     };
   }, [results, hasSearched]);
 
@@ -241,6 +245,15 @@ export const Trace: React.FC = () => {
 
       {hasSearched && (
         <div className="space-y-4">
+          {searchType === 'batchNo' && results.length > 0 && stats && (
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+              <p className="text-sm text-gray-600">
+                共找到 <span className="font-semibold text-gray-800">{stats.total}</span> 条记录，
+                其中已绑定预约 <span className="font-semibold text-purple-600">{stats.boundCount}</span> 条，
+                历史出库 <span className="font-semibold text-gray-600">{stats.unboundCount}</span> 条
+              </p>
+            </div>
+          )}
           {results.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
               <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -249,7 +262,7 @@ export const Trace: React.FC = () => {
             </div>
           ) : (
             results.map((record, index) => (
-              <TraceCard key={record.appointment.id} record={record} index={index} />
+              <TraceCard key={record.appointment?.id || record.outboundRecord.id} record={record} index={index} />
             ))
           )}
         </div>
@@ -292,6 +305,136 @@ export const Trace: React.FC = () => {
 const TraceCard: React.FC<{ record: TraceRecord; index: number }> = ({ record, index }) => {
   const { appointment, slot, station, batch, outboundRecord } = record;
   const batchWarning = batch && calculateDaysRemaining(batch.expiryDate) <= 30;
+  const isUnbound = !appointment;
+
+  if (isUnbound) {
+    return (
+      <div className="bg-gray-50 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-gray-100 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-400 rounded-lg flex items-center justify-center text-white font-bold">
+              {index + 1}
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                {outboundRecord.patientName || '未登记'}
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-600">
+                  历史出库记录（未绑定预约）
+                </span>
+              </h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                出库时间：{formatDateTime(outboundRecord.outboundTime)}
+              </p>
+            </div>
+          </div>
+          {batchWarning && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-100 rounded-lg text-orange-700 text-sm">
+              <AlertTriangle className="w-4 h-4" />
+              疫苗批次临期，请注意
+            </div>
+          )}
+        </div>
+
+        <div className="p-6">
+          <div className="space-y-4">
+            <h4 className="font-medium text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-200">
+              <Package className="w-4 h-4 text-gray-500" />
+              出库基本信息
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <InfoItem
+                icon={<User className="w-4 h-4" />}
+                label="受种者姓名"
+                value={outboundRecord.patientName || '未登记'}
+              />
+              {outboundRecord.patientIdCard && (
+                <InfoItem
+                  icon={<CreditCard className="w-4 h-4" />}
+                  label="身份证号"
+                  value={outboundRecord.patientIdCard}
+                />
+              )}
+              {outboundRecord.phone && (
+                <InfoItem
+                  icon={<Phone className="w-4 h-4" />}
+                  label="联系电话"
+                  value={outboundRecord.phone}
+                />
+              )}
+              <InfoItem
+                icon={<Syringe className="w-4 h-4" />}
+                label="疫苗类型"
+                value={outboundRecord.vaccineName}
+                highlight
+              />
+              <InfoItem
+                icon={<Calendar className="w-4 h-4" />}
+                label="出库时间"
+                value={formatDateTime(outboundRecord.outboundTime)}
+              />
+              <InfoItem
+                icon={<User className="w-4 h-4" />}
+                label="操作人"
+                value={outboundRecord.operator}
+              />
+              <InfoItem
+                icon={<Package className="w-4 h-4" />}
+                label="出库数量"
+                value={`${outboundRecord.quantity} 剂`}
+              />
+            </div>
+          </div>
+
+          {batch && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h4 className="font-medium text-gray-700 flex items-center gap-2 pb-3">
+                <Package className="w-4 h-4 text-orange-500" />
+                疫苗批次信息
+              </h4>
+              <div className={cn(
+                'p-4 rounded-xl border-2',
+                batchWarning
+                  ? 'border-orange-300 bg-orange-50'
+                  : 'border-gray-200 bg-white'
+              )}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-mono text-lg font-bold text-gray-800">{batch.batchNo}</span>
+                  {batchWarning && (
+                    <span className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      临期（{calculateDaysRemaining(batch.expiryDate)}天后过期）
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">疫苗：</span>
+                    <span className="font-medium text-gray-800">{batch.vaccineName}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">厂家：</span>
+                    <span className="font-medium text-gray-800">{batch.manufacturer}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">生产：</span>
+                    <span className="font-medium text-gray-800">{batch.productionDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">有效期至：</span>
+                    <span className={cn(
+                      'font-medium',
+                      batchWarning ? 'text-orange-600' : 'text-gray-800'
+                    )}>{batch.expiryDate}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const screeningPassed = appointment.screeningResult && !appointment.screeningResult.hasContraindication;
 
   return (

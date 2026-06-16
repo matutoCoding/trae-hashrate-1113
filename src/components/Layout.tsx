@@ -8,7 +8,9 @@ import {
   AlertTriangle,
   LogOut,
   User,
-  Search
+  Search,
+  ShieldAlert,
+  BarChart3
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
@@ -19,7 +21,9 @@ const navItems = [
   { path: '/outbound', label: '效期出库管理', icon: PackageCheck },
   { path: '/schedule', label: '接种排期管理', icon: CalendarDays },
   { path: '/validation', label: '冲突校验中心', icon: AlertTriangle },
-  { path: '/trace', label: '接种追溯查询', icon: Search }
+  { path: '/trace', label: '接种追溯查询', icon: Search },
+  { path: '/recall', label: '疫苗召回管理', icon: ShieldAlert },
+  { path: '/statistics', label: '接种统计看板', icon: BarChart3 }
 ];
 
 export const Layout: React.FC = () => {
