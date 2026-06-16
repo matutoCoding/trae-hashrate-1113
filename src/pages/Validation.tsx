@@ -140,6 +140,11 @@ export const Validation: React.FC = () => {
     return appointments.find(a => a.id === selectedAppointmentId) || null;
   }, [appointments, selectedAppointmentId]);
 
+  const latestScreeningResult = useMemo(() => {
+    if (screeningResult) return screeningResult;
+    return selectedAppointment?.screeningResult || null;
+  }, [screeningResult, selectedAppointment?.screeningResult]);
+
   const statusText: Record<string, string> = {
     booked: '待筛查',
     screening_passed: '筛查通过'
@@ -507,7 +512,7 @@ export const Validation: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  {selectedAppointment?.screeningResult && (
+                  {latestScreeningResult && (
                     <button
                       onClick={() => setShowResultModal(true)}
                       className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"
@@ -712,7 +717,7 @@ export const Validation: React.FC = () => {
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-blue-600" />
-                历史筛查结果
+                筛查结果
               </h3>
               <button
                 onClick={() => setShowResultModal(false)}
@@ -738,12 +743,12 @@ export const Validation: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-gray-500">筛查状态：</span>
-                    {selectedAppointment.screeningResult ? (
+                    {latestScreeningResult ? (
                       <span className={cn(
                         'font-medium',
-                        selectedAppointment.screeningResult.hasContraindication === false ? 'text-green-600' : 'text-red-600'
+                        latestScreeningResult.hasContraindication === false ? 'text-green-600' : 'text-red-600'
                       )}>
-                        {selectedAppointment.screeningResult.hasContraindication === false ? '筛查通过' : '存在禁忌'}
+                        {latestScreeningResult.hasContraindication === false ? '筛查通过' : '存在禁忌'}
                       </span>
                     ) : (
                       <span className="font-medium text-gray-600">未做过筛查</span>
@@ -752,9 +757,9 @@ export const Validation: React.FC = () => {
                 </div>
               </div>
 
-              {selectedAppointment.screeningResult ? (
+              {latestScreeningResult ? (
                 <>
-                  {selectedAppointment.screeningResult.hasContraindication ? (
+                  {latestScreeningResult.hasContraindication ? (
                     <ResultCard
                       type="danger"
                       title="存在接种禁忌"
@@ -772,14 +777,14 @@ export const Validation: React.FC = () => {
 
                   <div className="space-y-2">
                     <h4 className="font-medium text-gray-700">详细评估：</h4>
-                    {selectedAppointment.screeningResult.warnings.map((warning, index) => (
+                    {latestScreeningResult.warnings.map((warning, index) => (
                       <div key={index} className="bg-gray-50 rounded-lg p-3">
                         <p className="text-gray-700 text-sm">
                           <span className="font-medium text-blue-600">{index + 1}.</span> {warning}
                         </p>
-                        {selectedAppointment.screeningResult?.suggestions[index] && (
+                        {latestScreeningResult?.suggestions[index] && (
                           <p className="text-gray-600 text-sm mt-1 ml-5">
-                            → {selectedAppointment.screeningResult.suggestions[index]}
+                            → {latestScreeningResult.suggestions[index]}
                           </p>
                         )}
                       </div>

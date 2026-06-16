@@ -574,6 +574,26 @@ export const useAppStore = create<AppState>()(
             });
           }
         }
+
+        if (params.patientIdCard || params.phone) {
+          const standaloneOutbounds = state.outboundRecords.filter((o) => {
+            if (o.appointmentId) return false;
+            if (params.patientIdCard && !(o.patientIdCard && o.patientIdCard.includes(params.patientIdCard))) return false;
+            if (params.phone && !(o.phone && o.phone.includes(params.phone))) return false;
+            return true;
+          });
+          
+          const existingOutboundIds = new Set(results.filter(r => r.outboundRecord).map(r => r.outboundRecord!.id));
+          
+          for (const outRec of standaloneOutbounds) {
+            if (existingOutboundIds.has(outRec.id)) continue;
+            const batch = state.batches.find((b) => b.id === outRec.batchId);
+            results.push({
+              outboundRecord: outRec,
+              batch
+            });
+          }
+        }
         
         return results.sort((a, b) => {
           const timeA = a.appointment?.createdAt ?? a.outboundRecord?.outboundTime ?? '';
@@ -612,7 +632,7 @@ export const useAppStore = create<AppState>()(
         
         set((state) => ({
           batches: state.batches.map((b) =>
-            b.id === data.batchId ? { ...b, status: 'locked' as const } : b
+            b.id === data.batchId ? { ...b, status: 'locked' as const, remainingQuantity: 0 } : b
           ),
           recallRecords: [newRecord, ...state.recallRecords]
         }));

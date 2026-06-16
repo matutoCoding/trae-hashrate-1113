@@ -186,7 +186,9 @@ export const Statistics: React.FC = () => {
     </div>
   );
 
-  const monthlyTotal = stats.byVaccineType.reduce((sum, v) => sum + v.monthlyCompleted, 0);
+  const monthlyTotal = selectedVaccineType
+    ? (stats.byVaccineType.find(v => v.vaccineName === selectedVaccineType)?.monthlyCompleted ?? 0)
+    : stats.byVaccineType.reduce((sum, v) => sum + v.monthlyCompleted, 0);
   const avgScreeningFailRate = stats.byVaccineType.length > 0
     ? Math.round(stats.byVaccineType.reduce((sum, v) => sum + v.screeningFailedRate, 0) / stats.byVaccineType.length)
     : 0;
